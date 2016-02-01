@@ -5,11 +5,16 @@ import java.util.ServiceLoader
 
 import mesosphere.marathon.WrongConfigurationException
 import mesosphere.marathon.core.plugin.impl.PluginManagerImpl._
-import mesosphere.marathon.core.plugin.{ PluginManagerConfiguration, PluginManager }
+import mesosphere.marathon.core.plugin.{
+  PluginsDescriptor,
+  PluginDefinition,
+  PluginManagerConfiguration,
+  PluginManager
+}
 import mesosphere.marathon.io.IO
 import mesosphere.marathon.plugin.plugin.PluginConfiguration
 import org.slf4j.{ Logger, LoggerFactory }
-import play.api.libs.json.{ JsObject, Json }
+import play.api.libs.json.{ JsString, JsObject, Json }
 
 import scala.collection.JavaConverters._
 import scala.reflect.ClassTag
@@ -18,7 +23,7 @@ import scala.reflect.ClassTag
   * The plugin manager can load plugins from given urls.
   * @param urls the urls pointing to plugins.
   */
-private[plugin] class PluginManagerImpl(val descriptor: PluginsDescriptor, val urls: Seq[URL]) extends PluginManager {
+class PluginManagerImpl(val descriptor: PluginsDescriptor, val urls: Seq[URL]) extends PluginManager {
 
   private[this] val log: Logger = LoggerFactory.getLogger(getClass)
 
@@ -73,11 +78,15 @@ private[plugin] class PluginManagerImpl(val descriptor: PluginsDescriptor, val u
 object PluginManagerImpl {
   case class PluginReference[T](plugin: T, definition: PluginDefinition)
   case class PluginHolder[T](classTag: ClassTag[T], plugins: Seq[PluginReference[T]])
-  case class PluginDefinition(plugin: String, implementation: String, configuration: Option[JsObject])
-  case class PluginsDescriptor(plugins: Seq[PluginDefinition])
-
   implicit val definitionFormat = Json.format[PluginDefinition]
-  implicit val configurationFormat = Json.format[PluginsDescriptor]
+
+  def parse(fileName: String): PluginsDescriptor = {
+    val plugins = Json.parse(IO.readFile(fileName)).as[JsObject]
+      .\("plugins").as[JsObject]
+      .fields.map { case (id, value) => JsObject(value.as[JsObject].fields :+ ("id" -> JsString(id))) }
+      .map(_.as[PluginDefinition])
+    PluginsDescriptor(plugins)
+  }
 
   def apply(conf: PluginManagerConfiguration): PluginManagerImpl = {
     val configuredPluginManager = for {
@@ -85,7 +94,7 @@ object PluginManagerImpl {
       confName <- conf.pluginConf
     } yield {
       val sources = IO.listFiles(dirName)
-      val descriptor = Json.parse(IO.readFile(confName)).as[PluginsDescriptor]
+      val descriptor = parse(confName)
       new PluginManagerImpl(descriptor, sources.map(_.toURI.toURL))
     }
     configuredPluginManager.get.getOrElse(new PluginManagerImpl(PluginsDescriptor(Seq.empty), Seq.empty))

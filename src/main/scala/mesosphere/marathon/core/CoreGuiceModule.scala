@@ -11,7 +11,7 @@ import mesosphere.marathon.core.base.Clock
 import mesosphere.marathon.core.launcher.OfferProcessor
 import mesosphere.marathon.core.launchqueue.LaunchQueue
 import mesosphere.marathon.core.leadership.{ LeadershipCoordinator, LeadershipModule }
-import mesosphere.marathon.core.plugin.PluginManager
+import mesosphere.marathon.core.plugin.{ PluginsDescriptor, PluginManager }
 import mesosphere.marathon.core.task.bus.{ TaskStatusEmitter, TaskStatusObservables }
 import mesosphere.marathon.core.task.jobs.TaskJobsModule
 import mesosphere.marathon.core.task.update.impl.{ ThrottlingTaskStatusUpdateProcessor }
@@ -30,6 +30,7 @@ import mesosphere.marathon.core.task.update.impl.steps.{
 import mesosphere.marathon.core.task.update.{ TaskStatusUpdateProcessor, TaskStatusUpdateStep }
 import mesosphere.marathon.metrics.Metrics
 import mesosphere.marathon.plugin.auth.{ Authenticator, Authorizer }
+import mesosphere.marathon.plugin.http.HttpRequestHandler
 import mesosphere.util.{ CapConcurrentExecutionsMetrics, CapConcurrentExecutions }
 
 /**
@@ -80,6 +81,9 @@ class CoreGuiceModule extends AbstractModule {
   def pluginManager(coreModule: CoreModule): PluginManager = coreModule.pluginModule.pluginManager
 
   @Provides @Singleton
+  def pluginDescriptor(coreModule: CoreModule): PluginsDescriptor = coreModule.pluginModule.pluginManager.descriptor
+
+  @Provides @Singleton
   def authorizer(coreModule: CoreModule): Authorizer = coreModule.authModule.authorizer
 
   @Provides @Singleton
@@ -118,6 +122,11 @@ class CoreGuiceModule extends AbstractModule {
       ContinueOnErrorStep(postToEventStreamStepImpl),
       ContinueOnErrorStep(scaleAppUpdateStepImpl)
     )
+  }
+
+  @Provides @Singleton
+  def pluginHttpRequestHandler(coreModule: CoreModule): Seq[HttpRequestHandler] = {
+    coreModule.pluginModule.httpRequestHandler
   }
 
   override def configure(): Unit = {

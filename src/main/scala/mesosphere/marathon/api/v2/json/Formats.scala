@@ -4,6 +4,7 @@ import mesosphere.marathon.Protos.Constraint.Operator
 import mesosphere.marathon.Protos.HealthCheckDefinition.Protocol
 import mesosphere.marathon.Protos.{ Constraint, MarathonTask }
 import mesosphere.marathon.core.appinfo._
+import mesosphere.marathon.core.plugin.{ PluginsDescriptor, PluginDefinition }
 import mesosphere.marathon.event._
 import mesosphere.marathon.event.http.EventSubscribers
 import mesosphere.marathon.health.{ Health, HealthCheck }
@@ -52,6 +53,7 @@ trait Formats
     with DeploymentFormats
     with EventFormats
     with EventSubscribersFormats
+    with PluginFormats
     with IpAddressFormats {
   import scala.collection.JavaConverters._
 
@@ -781,4 +783,17 @@ trait V2Formats {
     (__ \ "dependencies").formatNullable[Set[PathId]].withDefault(Group.defaultDependencies) ~
     (__ \ "version").formatNullable[Timestamp].withDefault(Group.defaultVersion)
   )(Group(_, _, _, _, _), unlift(Group.unapply))
+}
+
+trait PluginFormats {
+
+  implicit lazy val pluginDefinitionFormat: Writes[PluginDefinition] = (
+    (__ \ "id").write[String] ~
+    (__ \ "plugin").write[String] ~
+    (__ \ "implementation").write[String] ~
+    (__ \ "tags").writeNullable[Set[String]] ~
+    (__ \ "info").writeNullable[JsObject]
+  ) (d => (d.id, d.plugin, d.implementation, d.tags, d.info))
+
+  implicit lazy val pluginDescriptorFormat: Writes[PluginsDescriptor] = Json.writes[PluginsDescriptor]
 }
