@@ -41,8 +41,16 @@ abstract class HttpRequestHandlerBase extends HttpRequestHandler {
   }
 
   protected[this] def mediaMime(url: URL): String = {
-    Option(URLConnection.guessContentTypeFromName(url.toString))
-      .orElse(Option(Files.probeContentType(Paths.get(url.toURI))))
+    url.getPath.split("\\.").lastOption.flatMap(wellKnownMimes.get)
+      .orElse(Option(URLConnection.guessContentTypeFromName(url.toString)))
       .getOrElse("application/octet-stream")
   }
+
+  protected[this] val wellKnownMimes = Map (
+    "css" -> "text/css",
+    "js" -> "application/javascript",
+    "eot" -> "application/vnd.ms-fontobject",
+    "svg" -> "image/svg+xml",
+    "ttf" -> "application/font-ttf"
+  )
 }
