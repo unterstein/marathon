@@ -87,6 +87,7 @@ class AppsResourceTest extends MarathonSpec with Matchers with Mockito with Give
     val plan = DeploymentPlan(group, group)
     val body = """{ "cmd": "bla" }""".getBytes("UTF-8")
     groupManager.updateApp(any, any, any, any, any) returns Future.successful(plan)
+    groupManager.app(PathId("/app")) returns Future.successful(Some(app))
 
     When("The application is updated")
     val response = appsResource.replace(app.id.toString, body, false, auth.request, auth.response)
@@ -183,6 +184,7 @@ class AppsResourceTest extends MarathonSpec with Matchers with Mockito with Give
     val group = Group(PathId("/"), Set(app))
     val plan = DeploymentPlan(group, group)
     service.deploy(any, any) returns Future.successful(())
+    groupManager.app(PathId("/app")) returns Future.successful(Some(app))
 
     groupManager.updateApp(any, any, any, any, any) returns Future.successful(plan)
     val response = appsResource.restart(app.id.toString, force = true, auth.request, auth.response)
@@ -191,8 +193,11 @@ class AppsResourceTest extends MarathonSpec with Matchers with Mockito with Give
 
   test("Restart a non existing app will fail") {
     val missing = PathId("/app")
+    groupManager.app(PathId("/app")) returns Future.successful(None)
+
     groupManager.updateApp(any, any, any, any, any) returns Future.failed(new UnknownAppException(missing))
-    intercept[UnknownAppException] { appsResource.restart(missing.toString, force = true, auth.request, auth.response) }
+    val response = appsResource.restart(missing.toString, force = true, auth.request, auth.response)
+    response.getStatus should be(404)
   }
 
   test("Index has counts and deployments by default (regression for #2171)") {
@@ -251,37 +256,37 @@ class AppsResourceTest extends MarathonSpec with Matchers with Mockito with Give
     val app = """{"id":"/a/b/c","cmd":"foo","ports":[]}"""
     groupManager.rootGroup() returns Future.successful(Group.empty)
 
-    When(s"the resource is fetched from index")
+    When("we try to fetch the list of apps")
     val index = appsResource.index("", "", "", embed, req, resp)
     Then("we receive a NotAuthenticated response")
     index.getStatus should be(auth.NotAuthenticatedStatus)
 
-    When(s"the resource is fetched from create")
+    When("we try to add an app")
     val create = appsResource.create(app.getBytes("UTF-8"), false, req, resp)
     Then("we receive a NotAuthenticated response")
     create.getStatus should be(auth.NotAuthenticatedStatus)
 
-    When(s"the resource is fetched from show")
+    When("we try to fetch an app")
     val show = appsResource.show("", embed, req, resp)
     Then("we receive a NotAuthenticated response")
     show.getStatus should be(auth.NotAuthenticatedStatus)
 
-    When(s"the resource is fetched from replace")
+    When("we try to update an app")
     val replace = appsResource.replace("", app.getBytes("UTF-8"), false, req, resp)
     Then("we receive a NotAuthenticated response")
     replace.getStatus should be(auth.NotAuthenticatedStatus)
 
-    When(s"the resource is fetched from replaceMulti")
+    When("we try to update multiple apps")
     val replaceMultiple = appsResource.replaceMultiple(false, s"[$app]".getBytes("UTF-8"), req, resp)
     Then("we receive a NotAuthenticated response")
     replaceMultiple.getStatus should be(auth.NotAuthenticatedStatus)
 
-    When(s"the resource is fetched from delete")
+    When("we try to delete an app")
     val delete = appsResource.delete(false, "", req, resp)
     Then("we receive a NotAuthenticated response")
     delete.getStatus should be(auth.NotAuthenticatedStatus)
 
-    When(s"the resource is fetched from restart")
+    When("we try to restart an app")
     val restart = appsResource.restart("", false, req, resp)
     Then("we receive a NotAuthenticated response")
     restart.getStatus should be(auth.NotAuthenticatedStatus)
@@ -296,41 +301,51 @@ class AppsResourceTest extends MarathonSpec with Matchers with Mockito with Give
     val embed = new util.HashSet[String]()
     val app = """{"id":"/a/b/c","cmd":"foo","ports":[]}"""
     groupManager.rootGroup() returns Future.successful(Group.empty)
+    groupManager.group(PathId.empty) returns Future.successful(Some(Group.empty))
+    groupManager.app("/unknownApp".toRootPath) returns Future.successful(None)
+    groupManager.app("/a/b/c".toRootPath) returns Future.successful(Some(AppDefinition("/a/b/c".toRootPath)))
+    config.zkTimeoutDuration returns 5.seconds
 
-    When(s"the resource is fetched from create")
+    When("we try to create an app")
     val create = appsResource.create(app.getBytes("UTF-8"), false, req, resp)
     Then("we receive a NotAuthorized response")
     create.getStatus should be(auth.UnauthorizedStatus)
 
-    When(s"the resource is fetched from show")
-    val show = appsResource.show("", embed, req, resp)
+    When("we try to fetch an app")
+    val show = appsResource.show("*", embed, req, resp)
     Then("we receive a NotAuthorized response")
     show.getStatus should be(auth.UnauthorizedStatus)
 
-    When(s"the resource is fetched from replace")
-    val replace = appsResource.replace("", app.getBytes("UTF-8"), false, req, resp)
+    When("we try to update an app")
+    val replace = appsResource.replace("/a/b/c", app.getBytes("UTF-8"), false, req, resp)
     Then("we receive a NotAuthorized response")
     replace.getStatus should be(auth.UnauthorizedStatus)
 
-    When(s"the resource is fetched from replaceMulti")
+    When("we try to update multiple apps")
     val replaceMultiple = appsResource.replaceMultiple(false, s"[$app]".getBytes("UTF-8"), req, resp)
     Then("we receive a NotAuthorized response")
     replaceMultiple.getStatus should be(auth.UnauthorizedStatus)
 
-    When(s"the resource is fetched from delete")
-    val delete = appsResource.delete(false, "", req, resp)
+    When("we try to remove an app")
+    val delete = appsResource.delete(false, "/a/b/c", req, resp)
     Then("we receive a NotAuthorized response")
     delete.getStatus should be(auth.UnauthorizedStatus)
 
-    When(s"the resource is fetched from restart")
-    val restart = appsResource.restart("", false, req, resp)
+    When("we try to restart an app")
+    val restart = appsResource.restart("/a/b/c", false, req, resp)
     Then("we receive a NotAuthorized response")
     restart.getStatus should be(auth.UnauthorizedStatus)
   }
 
   test("access with limited authorization gives a filtered apps listing") {
     Given("An authorized identity with limited ACL's")
-    auth.authFn = _.toString.startsWith("/visible")
+    auth.authFn = (resource: Any) => {
+      val id = resource match {
+        case app: AppDefinition => app.id.toString
+        case _                  => resource.asInstanceOf[Group].id.toString
+      }
+      id.startsWith("/visible")
+    }
     implicit val identity = auth.identity
     val selector = appsResource.selectAuthorized(AppSelector.forall(Seq.empty))
     val apps = Seq(

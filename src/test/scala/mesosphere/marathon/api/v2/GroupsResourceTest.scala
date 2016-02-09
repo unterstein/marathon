@@ -28,7 +28,6 @@ class GroupsResourceTest extends MarathonSpec with Matchers with Mockito with Gi
   }
 
   test("dry run update") {
-
     val app = AppDefinition(id = "/test/app".toRootPath, cmd = Some("test cmd"))
     val update = GroupUpdate(id = Some("/test".toRootPath), apps = Some(Set(app)))
 
@@ -56,6 +55,8 @@ class GroupsResourceTest extends MarathonSpec with Matchers with Mockito with Gi
     val req = auth.request
     val resp = auth.response
     val body = """{"id":"/a/b/c","cmd":"foo","ports":[]}"""
+
+    groupManager.rootGroup() returns Future.successful(Group(PathId.empty))
 
     When(s"the root is fetched from index")
     val root = groupsResource.root(req, resp)
@@ -98,13 +99,15 @@ class GroupsResourceTest extends MarathonSpec with Matchers with Mockito with Gi
     delete.getStatus should be(auth.NotAuthenticatedStatus)
   }
 
-  test("access without authorization is denied") {
+  test("access without authorization is denied if the resource exists") {
     Given("An unauthorized request")
     auth.authenticated = true
     auth.authorized = false
     val req = auth.request
     val resp = auth.response
     val body = """{"id":"/a/b/c","cmd":"foo","ports":[]}"""
+    groupManager.rootGroup() returns Future.successful(Group(PathId.empty))
+    groupManager.group(PathId.empty) returns Future.successful(Some(Group(PathId.empty)))
 
     When(s"the root group is created")
     val create = groupsResource.create(false, body.getBytes("UTF-8"), req, resp)
@@ -137,11 +140,32 @@ class GroupsResourceTest extends MarathonSpec with Matchers with Mockito with Gi
     delete.getStatus should be(auth.UnauthorizedStatus)
   }
 
+  test("authenticated delete without authorization leads to a 404 if the resource doesn't exist") {
+    Given("An unauthorized request")
+    auth.authenticated = true
+    auth.authorized = false
+    val req = auth.request
+    val resp = auth.response
+    groupManager.group(PathId.empty) returns Future.successful(None)
+
+    When(s"the group is deleted")
+    val delete = groupsResource.delete("", false, req, resp)
+    Then("we receive a 404")
+    delete.getStatus should be(404)
+  }
+
   test("access with limited authorization gives a filtered apps listing") {
     Given("An authorized identity with limited ACL's")
     auth.authenticated = true
     auth.authorized = true
-    auth.authFn = _.toString.startsWith("/visible")
+    auth.authFn = (resource: Any) => {
+      val id = resource match {
+        case app: AppDefinition => app.id.toString
+        case _                  => resource.asInstanceOf[Group].id.toString
+      }
+      id.startsWith("/visible")
+    }
+
     val group = Group(PathId.empty, Set(AppDefinition("/app1".toPath)), Set(
       Group("/visible".toPath, Set(AppDefinition("/visible/app1".toPath)), Set(
         Group("/visible/group".toPath, Set(AppDefinition("/visible/group/app1".toPath)))
@@ -172,7 +196,8 @@ class GroupsResourceTest extends MarathonSpec with Matchers with Mockito with Gi
   test("Group Versions for root are transferred as simple json string array (Fix #2329)") {
     Given("Specific Group versions")
     val groupVersions = Seq(Timestamp.now(), Timestamp.now())
-    groupManager.versions(any) returns Future.successful(groupVersions.toIterable)
+    groupManager.versions(PathId.empty) returns Future.successful(groupVersions.toIterable)
+    groupManager.group(PathId.empty) returns Future.successful(Some(Group(PathId.empty)))
 
     When("The versions are queried")
     val rootVersionsResponse = groupsResource.group("versions", auth.request, auth.response)
@@ -186,6 +211,8 @@ class GroupsResourceTest extends MarathonSpec with Matchers with Mockito with Gi
     Given("Specific group versions")
     val groupVersions = Seq(Timestamp.now(), Timestamp.now())
     groupManager.versions(any) returns Future.successful(groupVersions.toIterable)
+    groupManager.versions("/foo/bla/blub".toRootPath) returns Future.successful(groupVersions.toIterable)
+    groupManager.group("/foo/bla/blub".toRootPath) returns Future.successful(Some(Group("/foo/bla/blub".toRootPath)))
 
     When("The versions are queried")
     val rootVersionsResponse = groupsResource.group("/foo/bla/blub/versions", auth.request, auth.response)

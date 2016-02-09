@@ -8,7 +8,7 @@ import javax.ws.rs.core.{ Context, MediaType, Response }
 
 import mesosphere.marathon.api.v2.json.Formats._
 import mesosphere.marathon.api.{ AuthResource, MarathonMediaType }
-import mesosphere.marathon.plugin.auth.{ Authorizer, Authenticator, UpdateAppOrGroup }
+import mesosphere.marathon.plugin.auth._
 import mesosphere.marathon.state.GroupManager
 import mesosphere.marathon.upgrade.DeploymentManager.DeploymentStepInfo
 import mesosphere.marathon.upgrade.{ DeploymentAction, DeploymentPlan }
@@ -30,9 +30,9 @@ class DeploymentsResource @Inject() (
 
   @GET
   def running(@Context req: HttpServletRequest, @Context resp: HttpServletResponse): Response = {
-    doIfAuthenticated(req, resp) { implicit identity =>
+    doIfAuthenticated(req) { implicit identity =>
       val infos = result(service.listRunningDeployments())
-        .filter(_.plan.affectedApplicationIds.exists(isAllowedToView))
+        .filter(_.plan.affectedApplications.exists(isAuthorized(ViewApp, _)))
         .map { currentStep => toInfo(currentStep.plan, currentStep) }
       ok(jsonString(infos))
     }
@@ -47,7 +47,7 @@ class DeploymentsResource @Inject() (
 
     val plan = result(service.listRunningDeployments()).find(_.plan.id == id).map(_.plan)
     plan.fold(notFound(s"DeploymentPlan $id does not exist")) { deployment =>
-      doIfAuthorized(req, resp, UpdateAppOrGroup, deployment.affectedApplicationIds.toSeq: _*) { _ =>
+      doIfAuthenticatedAndAuthorized(req, UpdateApp, deployment.affectedApplications.toSeq: _*) {
         deployment match {
           case plan: DeploymentPlan if force =>
             // do not create a new deployment to return to the previous state

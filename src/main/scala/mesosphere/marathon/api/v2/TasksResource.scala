@@ -13,7 +13,7 @@ import mesosphere.marathon.core.appinfo.EnrichedTask
 import mesosphere.marathon.core.task.Task
 import mesosphere.marathon.core.task.tracker.TaskTracker
 import mesosphere.marathon.health.HealthCheckManager
-import mesosphere.marathon.plugin.auth.{ Authenticator, Authorizer, KillTask }
+import mesosphere.marathon.plugin.auth.{ Authenticator, Authorizer, UpdateApp, ViewApp }
 import mesosphere.marathon.state.{ GroupManager, PathId }
 import mesosphere.marathon.{ BadRequestException, MarathonConf, MarathonSchedulerService }
 import org.apache.mesos.Protos.TaskState
@@ -44,61 +44,62 @@ class TasksResource @Inject() (
   def indexJson(
     @QueryParam("status") status: String,
     @QueryParam("status[]") statuses: util.List[String],
-    @Context req: HttpServletRequest, @Context resp: HttpServletResponse): Response = {
-
-    doIfAuthenticated(req, resp) { implicit identity =>
-      //scalastyle:off null
-      if (status != null) {
-        statuses.add(status)
-      }
-      //scalastyle:on
-      val statusSet = statuses.asScala.flatMap(toTaskState).toSet
-
-      val taskList = taskTracker.tasksByAppSync
-
-      val tasks = taskList.appTasksMap.values.view.flatMap { app =>
-        app.marathonTasks.view.map(t => app.appId -> t)
-      }
-
-      val appIds = taskList.allAppIdsWithTasks
-
-      val appToPorts = appIds.map { appId =>
-        appId -> service.getApp(appId).map(_.servicePorts).getOrElse(Nil)
-      }.toMap
-
-      val health = appIds.flatMap { appId =>
-        result(healthCheckManager.statuses(appId))
-      }.toMap
-
-      val enrichedTasks: IterableView[EnrichedTask, Iterable[_]] = for {
-        (appId, task) <- tasks if isAllowedToView(appId)
-        if statusSet.isEmpty || statusSet(task.getStatus.getState)
-      } yield {
-        EnrichedTask(
-          appId,
-          task,
-          health.getOrElse(Task.Id(task.getId), Nil),
-          appToPorts.getOrElse(appId, Nil)
-        )
-      }
-
-      ok(jsonObjString(
-        "tasks" -> enrichedTasks
-      ))
+    @Context req: HttpServletRequest,
+    @Context resp: HttpServletResponse): Response = doIfAuthenticated(req) { implicit identity =>
+    //scalastyle:off null
+    if (status != null) {
+      statuses.add(status)
     }
+    //scalastyle:on
+    val statusSet = statuses.asScala.flatMap(toTaskState).toSet
+
+    val taskList = taskTracker.tasksByAppSync
+
+    val tasks = taskList.appTasksMap.values.view.flatMap { app =>
+      app.marathonTasks.view.map(t => app.appId -> t)
+    }
+
+    val appIds = taskList.allAppIdsWithTasks
+
+    val appIdsToApps = appIds.map(appId => appId -> result(groupManager.app(appId))).toMap
+
+    val appToPorts = appIdsToApps.map {
+      case (appId, app) => appId -> app.map(_.servicePorts).getOrElse(Nil)
+    }.toMap
+
+    val health = appIds.flatMap { appId =>
+      result(healthCheckManager.statuses(appId))
+    }.toMap
+
+    val enrichedTasks: IterableView[EnrichedTask, Iterable[_]] = for {
+      (appId, task) <- tasks
+      app <- appIdsToApps(appId)
+      if isAuthorized(ViewApp, app)
+      if statusSet.isEmpty || statusSet(task.getStatus.getState)
+    } yield {
+      EnrichedTask(
+        appId,
+        task,
+        health.getOrElse(Task.Id(task.getId), Nil),
+        appToPorts.getOrElse(appId, Nil)
+      )
+    }
+
+    ok(jsonObjString(
+      "tasks" -> enrichedTasks
+    ))
   }
 
   @GET
   @Produces(Array(MediaType.TEXT_PLAIN))
   @Timed
-  def indexTxt(@Context req: HttpServletRequest, @Context resp: HttpServletResponse): Response = {
-    doIfAuthenticated(req, resp) { implicit identity =>
-      ok(EndpointsHelper.appsToEndpointString(
-        taskTracker,
-        result(groupManager.rootGroup()).transitiveApps.toSeq.filter(app => isAllowedToView(app.id)),
-        "\t"
-      ))
-    }
+  def indexTxt(@Context req: HttpServletRequest,
+               @Context resp: HttpServletResponse): Response = doIfAuthenticated(req) { implicit identity =>
+    ok(EndpointsHelper.appsToEndpointString(
+      taskTracker,
+      result(groupManager.rootGroup()).transitiveApps.toSeq.filter(app => isAuthorized(ViewApp, app)),
+      "\t"
+    ))
   }
 
   @POST
@@ -113,13 +114,13 @@ class TasksResource @Inject() (
     @Context req: HttpServletRequest, @Context resp: HttpServletResponse): Response = {
 
     val taskIds = (Json.parse(body) \ "ids").as[Set[String]]
-    val taskToAppIds = taskIds.map { id =>
+    val tasksToAppId = taskIds.map { id =>
       try { id -> Task.Id.appId(id) }
       catch { case e: MatchError => throw new BadRequestException(s"Invalid task id '$id'.") }
     }.toMap
 
-    doIfAuthorized(req, resp, KillTask, taskToAppIds.values.toSeq: _*) { implicit identity =>
-
+    val affectedApps = tasksToAppId.values.flatMap(appId => result(groupManager.app(appId))).toSeq
+    doIfAuthenticatedAndAuthorized(req, UpdateApp, affectedApps: _*) {
       def scaleAppWithKill(toKill: Map[PathId, Iterable[Task]]): Response = {
         deploymentResult(result(taskKiller.killAndScale(toKill, force)))
       }
@@ -131,12 +132,13 @@ class TasksResource @Inject() (
         ok(jsonObjString("tasks" -> killed.map(task => EnrichedTask(task.taskId.appId, task.marathonTask, Seq.empty))))
       }
 
-      val taskByApps = taskToAppIds
+      val tasksByAppId = tasksToAppId
         .flatMap { case (taskId, appId) => taskTracker.tasksByAppSync.task(Task.Id(taskId)) }
         .groupBy { task => task.taskId.appId }
-        .map{ case (app, tasks) => app -> tasks }
+        .map{ case (appId, tasks) => appId -> tasks }
 
-      if (scale) scaleAppWithKill(taskByApps) else killTasks(taskByApps)
+      if (scale) scaleAppWithKill(tasksByAppId)
+      else killTasks(tasksByAppId)
     }
   }
 

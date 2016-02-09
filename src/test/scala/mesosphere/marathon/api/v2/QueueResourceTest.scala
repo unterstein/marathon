@@ -5,7 +5,7 @@ import mesosphere.marathon.api.v2.json.Formats._
 import mesosphere.marathon.core.base.{ Clock, ConstantClock }
 import mesosphere.marathon.core.launchqueue.LaunchQueue
 import mesosphere.marathon.core.launchqueue.LaunchQueue.QueuedTaskCount
-import mesosphere.marathon.state.AppDefinition
+import mesosphere.marathon.state.{ Timestamp, AppDefinition }
 import mesosphere.marathon.state.PathId._
 import mesosphere.marathon.test.Mockito
 import mesosphere.marathon.{ MarathonConf, MarathonSpec }
@@ -111,7 +111,7 @@ class QueueResourceTest extends MarathonSpec with Matchers with Mockito with Giv
     resetDelay.getStatus should be(auth.NotAuthenticatedStatus)
   }
 
-  test("access without authorization is denied") {
+  test("access without authorization is denied if the app is in the queue") {
     Given("An unauthorized request")
     auth.authenticated = true
     auth.authorized = false
@@ -119,9 +119,29 @@ class QueueResourceTest extends MarathonSpec with Matchers with Mockito with Giv
     val resp = auth.response
 
     When(s"one delay is reset")
+    val appId = "appId".toRootPath
+    val taskCount = LaunchQueue.QueuedTaskCount(AppDefinition(appId), 0, 0, 0, Timestamp.now())
+    queue.list returns Seq(taskCount)
+
     val resetDelay = queueResource.resetDelay("appId", req, resp)
     Then("we receive a not authorized response")
     resetDelay.getStatus should be(auth.UnauthorizedStatus)
+  }
+
+  test("access without authorization leads to a 404 if the app is not in the queue") {
+    Given("An unauthorized request")
+    auth.authenticated = true
+    auth.authorized = false
+    val req = auth.request
+    val resp = auth.response
+
+    When(s"one delay is reset")
+    val appId = "appId".toRootPath
+    queue.list returns Seq.empty
+
+    val resetDelay = queueResource.resetDelay("appId", req, resp)
+    Then("we receive a not authorized response")
+    resetDelay.getStatus should be(404)
   }
 
   var clock: Clock = _

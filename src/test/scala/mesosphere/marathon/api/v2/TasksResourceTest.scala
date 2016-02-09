@@ -8,7 +8,7 @@ import mesosphere.marathon.core.task.Task
 import mesosphere.marathon.core.task.tracker.TaskTracker
 import mesosphere.marathon.health.HealthCheckManager
 import mesosphere.marathon.state.PathId.StringPathId
-import mesosphere.marathon.state.{ Group, GroupManager, Timestamp }
+import mesosphere.marathon.state.{ AppDefinition, Group, GroupManager, Timestamp }
 import mesosphere.marathon.test.Mockito
 import mesosphere.marathon.upgrade.{ DeploymentPlan, DeploymentStep }
 import org.mockito.Mockito._
@@ -35,6 +35,8 @@ class TasksResourceTest extends MarathonSpec with GivenWhenThen with Matchers wi
     config.zkTimeoutDuration returns 5.seconds
     taskTracker.tasksByAppSync returns TaskTracker.TasksByApp.forTasks(task1, task2)
     taskKiller.kill(any, any) returns Future.successful(Iterable.empty[Task])
+    groupManager.app(app1) returns Future.successful(Some(AppDefinition(app1)))
+    groupManager.app(app2) returns Future.successful(Some(AppDefinition(app2)))
 
     When("we ask to kill both tasks")
     val response = taskResource.killTasks(scale = false, force = false, body = bodyBytes, auth.request, auth.response)
@@ -69,6 +71,8 @@ class TasksResourceTest extends MarathonSpec with GivenWhenThen with Matchers wi
     config.zkTimeoutDuration returns 5.seconds
     taskTracker.tasksByAppSync returns TaskTracker.TasksByApp.forTasks(task1, task2)
     taskKiller.killAndScale(any, any) returns Future.successful(deploymentPlan)
+    groupManager.app(app1) returns Future.successful(Some(AppDefinition(app1)))
+    groupManager.app(app2) returns Future.successful(Some(AppDefinition(app2)))
 
     When("we ask to kill both tasks")
     val response = taskResource.killTasks(scale = true, force = true, body = bodyBytes, auth.request, auth.response)
@@ -86,15 +90,52 @@ class TasksResourceTest extends MarathonSpec with GivenWhenThen with Matchers wi
     noMoreInteractions(taskKiller)
   }
 
-  test("access without authentication is denied") {
+  test("killTask without authentication is denied when the affected app exists") {
     Given("An unauthenticated request")
     auth.authenticated = false
     val req = auth.request
     val resp = auth.response
-    val taskId1 = Task.Id.forApp("/my/app".toRootPath).idString
-    val taskId2 = Task.Id.forApp("/my/app".toRootPath).idString
-    val taskId3 = Task.Id.forApp("/my/app".toRootPath).idString
+    val appId = "/my/app".toRootPath
+    val taskId1 = Task.Id.forApp(appId).idString
+    val taskId2 = Task.Id.forApp(appId).idString
+    val taskId3 = Task.Id.forApp(appId).idString
     val body = s"""{"ids": ["$taskId1", "$taskId2", "$taskId3"]}""".getBytes
+
+    Given("the app exists")
+    groupManager.app(appId) returns Future.successful(Some(AppDefinition(appId)))
+
+    When(s"kill task is called")
+    val killTasks = taskResource.killTasks(scale = true, force = false, body, req, resp)
+    Then("we receive a NotAuthenticated response")
+    killTasks.getStatus should be(auth.NotAuthenticatedStatus)
+  }
+
+  test("killTask without authentication is not allowed when the affected app does not exist") {
+    Given("An unauthenticated request")
+    auth.authenticated = false
+    val req = auth.request
+    val resp = auth.response
+    val appId = "/my/app".toRootPath
+    val taskId1 = Task.Id.forApp(appId).idString
+    val taskId2 = Task.Id.forApp(appId).idString
+    val taskId3 = Task.Id.forApp(appId).idString
+    val body = s"""{"ids": ["$taskId1", "$taskId2", "$taskId3"]}""".getBytes
+
+    Given("the app does not exist")
+    groupManager.app(appId) returns Future.successful(None)
+
+    When(s"kill task is called")
+    val killTasks = taskResource.killTasks(scale = true, force = false, body, req, resp)
+    Then("we receive a NotAuthenticated response")
+    killTasks.getStatus should be(auth.NotAuthenticatedStatus)
+  }
+
+  test("indexTxt and IndexJson without authentication aren't allowed") {
+    Given("An unauthenticated request")
+    auth.authenticated = false
+    val req = auth.request
+    val resp = auth.response
+    val appId = "/my/app".toRootPath
 
     When(s"the index as json is fetched")
     val running = taskResource.indexJson("status", Collections.emptyList(), req, resp)
@@ -105,23 +146,22 @@ class TasksResourceTest extends MarathonSpec with GivenWhenThen with Matchers wi
     val cancel = taskResource.indexTxt(req, resp)
     Then("we receive a NotAuthenticated response")
     cancel.getStatus should be(auth.NotAuthenticatedStatus)
-
-    When(s"kill task is called")
-    val killTasks = taskResource.killTasks(scale = true, force = false, body, req, resp)
-    Then("we receive a NotAuthenticated response")
-    killTasks.getStatus should be(auth.NotAuthenticatedStatus)
   }
 
-  test("access without authorization is denied") {
+  test("access without authorization is denied if the affected app exists") {
     Given("An unauthorized request")
     auth.authenticated = true
     auth.authorized = false
     val req = auth.request
     val resp = auth.response
-    val taskId1 = Task.Id.forApp("/my/app".toRootPath).idString
-    val taskId2 = Task.Id.forApp("/my/app".toRootPath).idString
-    val taskId3 = Task.Id.forApp("/my/app".toRootPath).idString
+    val appId = "/my/app".toRootPath
+    val taskId1 = Task.Id.forApp(appId).idString
+    val taskId2 = Task.Id.forApp(appId).idString
+    val taskId3 = Task.Id.forApp(appId).idString
     val body = s"""{"ids": ["$taskId1", "$taskId2", "$taskId3"]}""".getBytes
+
+    Given("the app exists")
+    groupManager.app(appId) returns Future.successful(Some(AppDefinition(appId)))
 
     When(s"kill task is called")
     val killTasks = taskResource.killTasks(scale = true, force = false, body, req, resp)
