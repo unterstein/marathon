@@ -9,7 +9,7 @@ import mesosphere.marathon.state.StorageVersions._
 import mesosphere.marathon.{ BuildInfo, MarathonConf, MigrationFailedException }
 import mesosphere.util.Logging
 import scala.concurrent.ExecutionContext.Implicits.global
-import mesosphere.util.state.{ PersistentStore, PersistentStoreManagement }
+import mesosphere.util.state.{PersistentEntity, PersistentStore, PersistentStoreManagement}
 import org.slf4j.LoggerFactory
 
 import scala.collection.SortedSet
@@ -99,6 +99,7 @@ class Migration @Inject() (
     val versionFuture = for {
       changes <- currentStorageVersion.flatMap(applyMigrationSteps)
       storedVersion <- storeCurrentVersion
+      _ <- finishMigration
     } yield storedVersion
 
     val version = versionFuture.map { version =>
@@ -114,13 +115,12 @@ class Migration @Inject() (
   def migrate(): StorageVersion = {
     val preparationFuture = for {
       _ <- initializeStore()
+      _ <- startMigration
       currentVersion = currentStorageVersion.flatMap(applyBackup)
     } yield currentVersion
 
     val migrationResult = for {
       _ <- preparationFuture
-      // TODO issue 3005 store current version on beginning of migration
-      // _ <- storeCurrentVersion
     } yield internalMigrate()
 
     val newStorageVersion = Await.result(migrationResult, Duration.Inf)
@@ -129,6 +129,34 @@ class Migration @Inject() (
   }
 
   private val storageVersionName = "internal:storage:version"
+  private val migrationInProgressName = "internal:storage:migrationInProgress"
+
+  def isMigrationInProgress: Future[Boolean] = {
+    store.load(migrationInProgressName).map {
+      case Some(variable) => true // TODO check value loaded from store, since then: present value means migration in progress
+      case None           => false
+    }
+  }
+
+  private def finishMigration: Future[Boolean] = {
+    store.load(migrationInProgressName).flatMap {
+      case Some(variable) => store.delete(variable.id)
+      case None           => {
+        // TODO warn
+        Future.successful(false)
+      }
+    }
+  }
+
+  private def startMigration: Future[PersistentEntity] = {
+    store.load(migrationInProgressName).flatMap {
+      case Some(variable) => {
+        // TODO ideally we would restore the backup and try again
+        throw new MigrationFailedException("Currently there is a migration in progress, we can not start a new one. Please restore the backup.")
+      }
+      case None           => store.create(migrationInProgressName, IndexedSeq.empty)
+    }
+  }
 
   def currentStorageVersion: Future[StorageVersion] = {
     store.load(storageVersionName).map {
