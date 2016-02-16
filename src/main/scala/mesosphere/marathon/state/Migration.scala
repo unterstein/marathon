@@ -74,12 +74,16 @@ class Migration @Inject() (
 
   def applyBackup(from: StorageVersion): Future[StorageVersion] = {
     log.info(s"Backup for version ${from.str}")
-    // TODO clean backup?
+    // TODO detect if backup is present and restore state of backup
+
     store.allIds().map(ids => {
       ids.filter(id => id.startsWith(config.zooKeeperStatePath)).map(id => {
         store.load(id).map {
           case Some(variable) => store.create(toBackupId(id, from), variable.bytes)
-          case None           => store.create(toBackupId(id, from), IndexedSeq.empty)
+          case None           => {
+            log.warn(s"Backup missed persistent entity for id $id")
+            store.create(toBackupId(id, from), IndexedSeq.empty)
+          }
         }
       })
     })
