@@ -139,9 +139,9 @@ class MigrationTest extends MarathonSpec with Mockito with Matchers with GivenWh
 
     f.migration.migrate()
 
+    verify(f.store, times(1)).create("internal:storage:migrationInProgress", IndexedSeq.empty)
+    verify(f.store, atLeastOnce).create(any, any)
     verify(f.store, times(1)).create(backupId, mockBytes)
-    verify(f.store, times(1)).create("internal:storage:migrationInProgress", any)
-    verify(f.store, times(1)).delete("internal:storage:migrationInProgress")
     verify(f.store, atLeastOnce).create(any, any)
   }
 
