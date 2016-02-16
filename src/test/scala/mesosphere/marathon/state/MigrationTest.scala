@@ -13,7 +13,8 @@ import mesosphere.util.state.{ PersistentEntity, PersistentStore, PersistentStor
 import org.scalatest.concurrent.ScalaFutures
 import org.scalatest.{ GivenWhenThen, Matchers }
 
-import scala.concurrent.Future
+import scala.concurrent.duration.Duration
+import scala.concurrent.{Await, Future}
 
 class MigrationTest extends MarathonSpec with Mockito with Matchers with GivenWhenThen with ScalaFutures {
 
@@ -135,8 +136,9 @@ class MigrationTest extends MarathonSpec with Mockito with Matchers with GivenWh
     f.groupRepo.group("root") returns Future.successful(None)
 
     f.migration.migrate()
-    val result = f.store.load(stateId)
-    result should not equal 'None
+
+    val backupEntity = Await.result(f.store.load(backupId), Duration.Inf)
+    backupEntity should not equal None
   }
 
   class Fixture {
