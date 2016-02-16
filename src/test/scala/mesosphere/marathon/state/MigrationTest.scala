@@ -116,11 +116,8 @@ class MigrationTest extends MarathonSpec with Mockito with Matchers with GivenWh
   test("migration should do a backup") {
     val f = new Fixture
 
-    val stateBase = f.config.zooKeeperStatePath
-    val backupBase = f.config.zooKeeperBackupPath
-
-    val stateId = s"$stateBase/first"
-    val backupId = s"${backupBase}_0.16.0/first"
+    val stateId = s"${f.config.zooKeeperStatePath}/first"
+    val backupId = s"${f.config.zooKeeperBackupPath}_0.16.0/first"
     val mockBytes = "myValue".getBytes
 
     f.groupRepo.rootGroup() returns Future.successful(None)
