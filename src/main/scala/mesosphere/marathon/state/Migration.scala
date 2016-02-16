@@ -78,8 +78,8 @@ class Migration @Inject() (
     store.allIds().map(ids => {
       ids.filter(id => id.startsWith(config.zooKeeperStatePath)).map(id => {
         store.load(id).map {
-          case Some(variable) => store.create(id, variable.bytes)
-          case None           => // TODO how could this happen?
+          case Some(variable) => store.create(toBackupId(id), variable.bytes)
+          case None           => store.create(toBackupId(id), IndexedSeq.empty)
         }
       })
     })
