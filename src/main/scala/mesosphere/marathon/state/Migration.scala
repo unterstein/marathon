@@ -180,10 +180,9 @@ class Migration @Inject() (
   private def finishMigration: Future[Boolean] = {
     store.load(migrationInProgressName).flatMap {
       case Some(variable) => store.delete(variable.id)
-      case None           => {
-        // TODO warn
+      case None           =>
+        log.warn("Remove of isMigrationInProgress not possible, flag already removed!")
         Future.successful(false)
-      }
     }
   }
 
