@@ -100,6 +100,9 @@ class MigrationTest extends MarathonSpec with Mockito with Matchers with GivenWh
     val unsupportedVersion = StorageVersions(0, 2, 0)
     f.store.load("internal:storage:version") returns Future.successful(Some(InMemoryEntity(
       id = "internal:storage:version", version = 0, bytes = unsupportedVersion.toByteArray)))
+    f.store.load("internal:storage:migrationInProgress") returns Future.successful(Some(InMemoryEntity(
+      id = "mock.internal:storage:migrationInProgress", version = 0, bytes = IndexedSeq.empty)))
+    f.store.create(any, any) returns Future.successful(mock[PersistentEntity])
 
     When("A migration is approached for that version")
     val ex = intercept[RuntimeException] {
@@ -124,6 +127,8 @@ class MigrationTest extends MarathonSpec with Mockito with Matchers with GivenWh
     f.groupRepo.store(any, any) returns Future.successful(Group.empty)
     f.store.load("internal:storage:version") returns Future.successful(Some(InMemoryEntity(
       id = "internal:storage:version", version = 0, bytes = StorageVersions(0, 16, 0).toByteArray)))
+    f.store.load("internal:storage:migrationInProgress") returns Future.successful(Some(InMemoryEntity(
+      id = "mock.internal:storage:migrationInProgress", version = 0, bytes = IndexedSeq.empty)))
     f.store.create(any, any) returns Future.successful(mock[PersistentEntity])
     f.store.update(any) returns Future.successful(mock[PersistentEntity])
     f.store.allIds() returns Future.successful(Seq(stateId))
@@ -131,8 +136,6 @@ class MigrationTest extends MarathonSpec with Mockito with Matchers with GivenWh
     f.store.load(any) returns Future.successful(None)
     f.store.load(stateId) returns Future.successful(Some(InMemoryEntity(
       id = stateId, version = 0, bytes = mockBytes)))
-//    f.store.load(backupId) returns Future.successful(Some(InMemoryEntity(
-//      id = stateId, version = 0, bytes = mockBytes)))
     f.appRepo.apps() returns Future.successful(Seq.empty)
     f.appRepo.allPathIds() returns Future.successful(Seq.empty)
     f.groupRepo.group("root") returns Future.successful(None)
@@ -141,8 +144,8 @@ class MigrationTest extends MarathonSpec with Mockito with Matchers with GivenWh
 
     verify(f.store, times(1)).create(backupId, mockBytes)
     verify(f.store, times(1)).create("internal:storage:migrationInProgress", any)
-    verify(f.store, atLeastOnce).create(any, any)
     verify(f.store, times(1)).delete("internal:storage:migrationInProgress")
+    verify(f.store, atLeastOnce).create(any, any)
   }
 
   class Fixture {
