@@ -118,6 +118,7 @@ class MigrationTest extends MarathonSpec with Mockito with Matchers with GivenWh
 
     val stateId = s"$stateBase/first"
     val backupId = s"$backupBase/first"
+    val mockBytes = "myValue".getBytes
 
     f.groupRepo.rootGroup() returns Future.successful(None)
     f.groupRepo.store(any, any) returns Future.successful(Group.empty)
@@ -128,17 +129,17 @@ class MigrationTest extends MarathonSpec with Mockito with Matchers with GivenWh
     f.store.initialize() returns Future.successful(())
     f.store.load(any) returns Future.successful(None)
     f.store.load(stateId) returns Future.successful(Some(InMemoryEntity(
-      id = stateId, version = 0, bytes = "myValue".getBytes)))
+      id = stateId, version = 0, bytes = mockBytes)))
     f.store.load(backupId) returns Future.successful(Some(InMemoryEntity(
-      id = stateId, version = 0, bytes = "myValue".getBytes)))
+      id = stateId, version = 0, bytes = mockBytes)))
     f.appRepo.apps() returns Future.successful(Seq.empty)
     f.appRepo.allPathIds() returns Future.successful(Seq.empty)
     f.groupRepo.group("root") returns Future.successful(None)
 
     f.migration.migrate()
 
-    val backupEntity = Await.result(f.store.load(backupId), Duration.Inf)
-    backupEntity should not equal None
+    verify(f.store, times(1)).create(backupId, mockBytes)
+    verify(f.store, atLeastOnce).create(any, any)
   }
 
   class Fixture {
