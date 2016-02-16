@@ -131,8 +131,8 @@ class MigrationTest extends MarathonSpec with Mockito with Matchers with GivenWh
     f.store.load(any) returns Future.successful(None)
     f.store.load(stateId) returns Future.successful(Some(InMemoryEntity(
       id = stateId, version = 0, bytes = mockBytes)))
-    f.store.load(backupId) returns Future.successful(Some(InMemoryEntity(
-      id = stateId, version = 0, bytes = mockBytes)))
+//    f.store.load(backupId) returns Future.successful(Some(InMemoryEntity(
+//      id = stateId, version = 0, bytes = mockBytes)))
     f.appRepo.apps() returns Future.successful(Seq.empty)
     f.appRepo.allPathIds() returns Future.successful(Seq.empty)
     f.groupRepo.group("root") returns Future.successful(None)
@@ -140,7 +140,9 @@ class MigrationTest extends MarathonSpec with Mockito with Matchers with GivenWh
     f.migration.migrate()
 
     verify(f.store, times(1)).create(backupId, mockBytes)
+    verify(f.store, times(1)).create("internal:storage:migrationInProgress", any)
     verify(f.store, atLeastOnce).create(any, any)
+    verify(f.store, times(1)).delete("internal:storage:migrationInProgress")
   }
 
   class Fixture {

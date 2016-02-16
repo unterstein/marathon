@@ -74,7 +74,7 @@ class Migration @Inject() (
 
   def applyBackup(from: StorageVersion): Future[StorageVersion] = {
     log.info(s"Backup for version ${from.str}")
-    store.allIds().map(ids => {
+    val updates = store.allIds().map(ids => {
       if (ids.length > 0) {
         // check if an backup entity is present and restore it, or store the current state as backup
         val storeOrRestore = store.load(fromStateToBackupId(ids.toList(0), from)).map(entity => {
@@ -86,11 +86,11 @@ class Migration @Inject() (
             storeBackup(from, ids)
           }
         })
-        // TODO is this await enough?
-        Await.ready(storeOrRestore, Duration.Inf)
       }
     })
-    Future.successful(from)
+    for {
+      _ <- updates
+    } yield from
   }
 
   def storeBackup(from: StorageVersion, ids: Seq[Migration.this.store.ID]): Seq[Future[Future[PersistentEntity]]] = {
