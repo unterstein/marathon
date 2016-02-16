@@ -72,22 +72,39 @@ class Migration @Inject() (
     case _: PersistentStore                 => Future.successful(())
   }
 
-  def migrate(): StorageVersion = {
+  def applyBackup(from: StorageVersion): Future[StorageVersion] = {
+    // TODO backup
+    log.info(s"Backup for version ${from.str}")
+    Future.successful(from)
+  }
+
+  private def internalMigrate(): StorageVersion = {
     val versionFuture = for {
-      _ <- initializeStore()
       changes <- currentStorageVersion.flatMap(applyMigrationSteps)
       storedVersion <- storeCurrentVersion
     } yield storedVersion
 
-    val result = versionFuture.map { version =>
+    val version = versionFuture.map { version =>
       log.info(s"Migration successfully applied for version ${version.str}")
       version
     }.recover {
       case ex: MigrationFailedException => throw ex
       case NonFatal(ex)                 => throw new MigrationFailedException("MigrationFailed", ex)
     }
+    Await.result(version, Duration.Inf)
+  }
 
-    Await.result(result, Duration.Inf)
+  def migrate(): StorageVersion = {
+    val preparationFuture = for {
+      _ <- initializeStore()
+      currentVersion = currentStorageVersion.flatMap(applyBackup)
+    } yield currentVersion
+
+    val migrationResult = preparationFuture.map(v => internalMigrate())
+
+    val newStorageVersion = Await.result(migrationResult, Duration.Inf)
+    // TODO do cleanup
+    newStorageVersion
   }
 
   private val storageVersionName = "internal:storage:version"
