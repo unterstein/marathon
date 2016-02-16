@@ -80,10 +80,9 @@ class Migration @Inject() (
       ids.filter(id => id.startsWith(config.zooKeeperStatePath)).map(id => {
         store.load(id).map {
           case Some(variable) => store.create(fromSateToBackupId(id, from), variable.bytes)
-          case None           => {
+          case None           =>
             log.warn(s"Backup missed persistent entity for id $id")
             store.create(fromSateToBackupId(id, from), IndexedSeq.empty)
-          }
         }
       })
     })
