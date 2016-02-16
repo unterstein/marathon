@@ -78,15 +78,18 @@ class Migration @Inject() (
     store.allIds().map(ids => {
       ids.filter(id => id.startsWith(config.zooKeeperStatePath)).map(id => {
         store.load(id).map {
-          case Some(variable) => store.create(toBackupId(id), variable.bytes)
-          case None           => store.create(toBackupId(id), IndexedSeq.empty)
+          case Some(variable) => store.create(toBackupId(id, from), variable.bytes)
+          case None           => store.create(toBackupId(id, from), IndexedSeq.empty)
         }
       })
     })
     Future.successful(from)
   }
 
-  private def toBackupId(givenId: String) = config.zooKeeperBackupPath + givenId.replace(config.zooKeeperStatePath, "")
+  private def toBackupId(givenId: String, storageVersion: StorageVersion) = {
+    // procudes something like: /marathon/backup_0.15.0/id
+    config.zooKeeperBackupPath + "_" + storageVersion.getMajor + "." + storageVersion.getMinor + "." + storageVersion.getPatch + givenId.replace(config.zooKeeperStatePath, "")
+  }
 
   private def internalMigrate(): StorageVersion = {
     val versionFuture = for {

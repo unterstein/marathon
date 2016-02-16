@@ -117,12 +117,13 @@ class MigrationTest extends MarathonSpec with Mockito with Matchers with GivenWh
     val backupBase = f.config.zooKeeperBackupPath
 
     val stateId = s"$stateBase/first"
-    val backupId = s"$backupBase/first"
+    val backupId = s"${backupBase}_0.16.0/first"
     val mockBytes = "myValue".getBytes
 
     f.groupRepo.rootGroup() returns Future.successful(None)
     f.groupRepo.store(any, any) returns Future.successful(Group.empty)
-    f.store.load("internal:storage:version") returns Future.successful(None)
+    f.store.load("internal:storage:version") returns Future.successful(Some(InMemoryEntity(
+      id = "internal:storage:version", version = 0, bytes = StorageVersions(0, 16, 0).toByteArray)))
     f.store.create(any, any) returns Future.successful(mock[PersistentEntity])
     f.store.update(any) returns Future.successful(mock[PersistentEntity])
     f.store.allIds() returns Future.successful(Seq(stateId))
