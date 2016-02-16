@@ -101,9 +101,9 @@ class Migration @Inject() (
     } yield currentVersion
 
     val migrationResult = for {
-      // issue 3005 store current version on beginning of migration
       _ <- preparationFuture
-      _ <- storeCurrentVersion
+      // TODO issue 3005 store current version on beginning of migration
+      // _ <- storeCurrentVersion
     } yield internalMigrate()
 
     val newStorageVersion = Await.result(migrationResult, Duration.Inf)
