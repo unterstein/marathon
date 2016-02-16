@@ -100,7 +100,11 @@ class Migration @Inject() (
       currentVersion = currentStorageVersion.flatMap(applyBackup)
     } yield currentVersion
 
-    val migrationResult = preparationFuture.map(v => internalMigrate())
+    val migrationResult = for {
+      // issue 3005 store current version on beginning of migration
+      _ <- preparationFuture
+      _ <- storeCurrentVersion
+    } yield internalMigrate()
 
     val newStorageVersion = Await.result(migrationResult, Duration.Inf)
     // TODO do cleanup
