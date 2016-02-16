@@ -79,10 +79,10 @@ class Migration @Inject() (
     store.allIds().map(ids => {
       ids.filter(id => id.startsWith(config.zooKeeperStatePath)).map(id => {
         store.load(id).map {
-          case Some(variable) => store.create(toBackupId(id, from), variable.bytes)
+          case Some(variable) => store.create(fromSateToBackupId(id, from), variable.bytes)
           case None           => {
             log.warn(s"Backup missed persistent entity for id $id")
-            store.create(toBackupId(id, from), IndexedSeq.empty)
+            store.create(fromSateToBackupId(id, from), IndexedSeq.empty)
           }
         }
       })
@@ -90,10 +90,26 @@ class Migration @Inject() (
     Future.successful(from)
   }
 
-  private def toBackupId(givenId: String, storageVersion: StorageVersion) = {
-    // procudes something like: /marathon/backup_0.15.0/id
-    config.zooKeeperBackupPath + "_" + storageVersion.getMajor + "." + storageVersion.getMinor + "." + storageVersion.getPatch + givenId.replace(config.zooKeeperStatePath, "")
+  /**
+   * @param givenId the id in storage, e.g. /marathon/state/$id
+   * @param storageVersion the current storage version
+   * @return something like: /marathon/backup_0.16.0/$id
+   */
+  private def fromSateToBackupId(givenId: String, storageVersion: StorageVersion) = {
+    backupPath(storageVersion) + givenId.replace(config.zooKeeperStatePath, "")
   }
+
+  /**
+   *
+   * @param givenId something like: /marathon/backup_0.16.0/$someId
+   * @param storageVersion the current storage version
+   * @return something like /marathon/state/$someId
+   */
+  private def fromBackupToStateId(givenId: String, storageVersion: StorageVersion) = {
+    config.zooKeeperStatePath + "/" + givenId.replace(backupPath(storageVersion), "")
+  }
+
+  private def backupPath(storageVersion: StorageVersion) = config.zooKeeperBackupPath + "_" + storageVersion.getMajor + "." + storageVersion.getMinor + "." + storageVersion.getPatch
 
   private def internalMigrate(): StorageVersion = {
     val versionFuture = for {
