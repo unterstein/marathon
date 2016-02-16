@@ -75,9 +75,9 @@ class Migration @Inject() (
   def applyBackup(from: StorageVersion): Future[StorageVersion] = {
     log.info(s"Backup for version ${from.str}")
     val updates = store.allIds().map(ids => {
-      if (ids.length > 0) {
+      val idSequentialUpdates: Seq[Future[Future[PersistentEntity]]] = if (ids.length > 0) {
         // check if an backup entity is present and restore it, or store the current state as backup
-        val storeOrRestore = store.load(fromStateToBackupId(ids.toList(0), from)).map(entity => {
+        val storeOrRestore  = store.load(fromStateToBackupId(ids.toList(0), from)).map(entity => {
           if (entity.isDefined) {
             // we found a backup, therefore we need to restore this
             // TODO clean backup
@@ -86,8 +86,16 @@ class Migration @Inject() (
             storeBackup(from, ids)
           }
         })
+        Await.result(storeOrRestore, Duration.Inf)
+      } else {
+        Seq.empty[Future[Future[PersistentEntity]]]
       }
+
+      for {
+        result <- idSequentialUpdates.map(s => Await.result(s, Duration.Inf))
+      } yield Await.result(result, Duration.Inf)
     })
+
     for {
       _ <- updates
     } yield from
@@ -188,9 +196,14 @@ class Migration @Inject() (
 
   private def startMigration: Future[PersistentEntity] = {
     store.load(migrationInProgressName).flatMap {
-      case Some(variable) =>
-        // TODO restore of backup is implemented, the reset of this flag must be handled through application startup and issue 3004
-        throw new MigrationFailedException("Currently there is a migration in progress, we can not start a new one. Please restore the backup.")
+      case Some(variable: PersistentEntity) =>
+        // check if loaded id is equals to actual migrationInProgressName -> needed for testing environment
+        if (variable.id == migrationInProgressName) {
+          // TODO restore of backup is implemented, the reset of this flag must be handled through application startup and issue 3004
+          throw new MigrationFailedException("Currently there is a migration in progress, we can not start a new one. Please restore the backup.")
+        } else {
+          store.create(migrationInProgressName, IndexedSeq.empty)
+        }
       case None           => store.create(migrationInProgressName, IndexedSeq.empty)
     }
   }
