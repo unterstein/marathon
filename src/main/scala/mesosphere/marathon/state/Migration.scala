@@ -86,7 +86,7 @@ class Migration @Inject() (
             storeBackup(from, ids)
           }
         })
-        // TODO is this away enough?
+        // TODO is this await enough?
         Await.ready(storeOrRestore, Duration.Inf)
       }
     })
