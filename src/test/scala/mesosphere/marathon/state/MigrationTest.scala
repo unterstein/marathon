@@ -109,6 +109,36 @@ class MigrationTest extends MarathonSpec with Mockito with Matchers with GivenWh
     ex.getMessage should equal (s"Migration from versions < $minVersion is not supported. Your version: $unsupportedVersion")
   }
 
+  test("migration should do a backup") {
+    val f = new Fixture
+
+    val stateBase = f.config.zooKeeperStatePath
+    val backupBase = f.config.zooKeeperBackupPath
+
+    val stateId = s"$stateBase/first"
+    val backupId = s"$backupBase/first"
+
+    f.groupRepo.rootGroup() returns Future.successful(None)
+    f.groupRepo.store(any, any) returns Future.successful(Group.empty)
+    f.store.load("internal:storage:version") returns Future.successful(None)
+    f.store.create(any, any) returns Future.successful(mock[PersistentEntity])
+    f.store.update(any) returns Future.successful(mock[PersistentEntity])
+    f.store.allIds() returns Future.successful(Seq(stateId))
+    f.store.initialize() returns Future.successful(())
+    f.store.load(any) returns Future.successful(None)
+    f.store.load(stateId) returns Future.successful(Some(InMemoryEntity(
+      id = stateId, version = 0, bytes = "myValue".getBytes)))
+    f.store.load(backupId) returns Future.successful(Some(InMemoryEntity(
+      id = stateId, version = 0, bytes = "myValue".getBytes)))
+    f.appRepo.apps() returns Future.successful(Seq.empty)
+    f.appRepo.allPathIds() returns Future.successful(Seq.empty)
+    f.groupRepo.group("root") returns Future.successful(None)
+
+    f.migration.migrate()
+    val result = f.store.load(stateId)
+    result should not equal 'None
+  }
+
   class Fixture {
     trait StoreWithManagement extends PersistentStore with PersistentStoreManagement
     val metrics = new Metrics(new MetricRegistry)
@@ -125,5 +155,8 @@ class MigrationTest extends MarathonSpec with Mockito with Matchers with GivenWh
       metrics
     )
     val migration = new Migration(store, appRepo, groupRepo, taskRepo, config, new Metrics(new MetricRegistry))
+
+    config.zooKeeperStatePath returns "/marathon/state"
+    config.zooKeeperBackupPath returns "/marathon/backup"
   }
 }

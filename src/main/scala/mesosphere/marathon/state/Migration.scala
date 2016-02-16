@@ -73,10 +73,20 @@ class Migration @Inject() (
   }
 
   def applyBackup(from: StorageVersion): Future[StorageVersion] = {
-    // TODO backup
     log.info(s"Backup for version ${from.str}")
+    // TODO clean backup?
+    store.allIds().map(ids => {
+      ids.filter(id => id.startsWith(config.zooKeeperStatePath)).map(id => {
+        store.load(id).map {
+          case Some(variable) => store.create(id, variable.bytes)
+          case None           => // TODO how could this happen?
+        }
+      })
+    })
     Future.successful(from)
   }
+
+  private def toBackupId(givenId: String) = config.zooKeeperBackupPath + givenId.replace(config.zooKeeperStatePath, "")
 
   private def internalMigrate(): StorageVersion = {
     val versionFuture = for {
