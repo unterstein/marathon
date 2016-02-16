@@ -74,19 +74,45 @@ class Migration @Inject() (
 
   def applyBackup(from: StorageVersion): Future[StorageVersion] = {
     log.info(s"Backup for version ${from.str}")
-    // TODO detect if backup is present and restore state of backup
-
     store.allIds().map(ids => {
-      ids.filter(id => id.startsWith(config.zooKeeperStatePath)).map(id => {
-        store.load(id).map {
-          case Some(variable) => store.create(fromSateToBackupId(id, from), variable.bytes)
-          case None           =>
-            log.warn(s"Backup missed persistent entity for id $id")
-            store.create(fromSateToBackupId(id, from), IndexedSeq.empty)
-        }
-      })
+      if (ids.length > 0) {
+        // check if an backup entity is present and restore it, or store the current state as backup
+        val storeOrRestore = store.load(fromStateToBackupId(ids.toList(0), from)).map(entity => {
+          if (entity.isDefined) {
+            // we found a backup, therefore we need to restore this
+            // TODO clean backup
+            restoreBackup(from, ids)
+          } else {
+            storeBackup(from, ids)
+          }
+        })
+        // TODO is this away enough?
+        Await.ready(storeOrRestore, Duration.Inf)
+      }
     })
     Future.successful(from)
+  }
+
+  def storeBackup(from: StorageVersion, ids: Seq[Migration.this.store.ID]): Seq[Future[Future[PersistentEntity]]] = {
+    ids.filter(id => id.startsWith(config.zooKeeperStatePath)).map(id => {
+      store.load(id).map {
+        case Some(variable) => store.create(fromStateToBackupId(id, from), variable.bytes)
+        case None =>
+          log.warn(s"Backup missed persistent entity for id $id")
+          store.create(fromStateToBackupId(id, from), IndexedSeq.empty)
+      }
+    })
+  }
+
+  def restoreBackup(from: StorageVersion, ids: Seq[Migration.this.store.ID]): Seq[Future[Future[PersistentEntity]]] = {
+    ids.filter(id => id.startsWith(config.zooKeeperBackupPath)).map(id => {
+      store.load(id).map {
+        case Some(variable) => store.create(fromBackupToStateId(id, from), variable.bytes)
+        case None =>
+          log.warn(s"Restore backup missed persistent entity for id $id")
+          store.create(fromBackupToStateId(id, from), IndexedSeq.empty)
+      }
+    })
   }
 
   /**
@@ -94,7 +120,7 @@ class Migration @Inject() (
    * @param storageVersion the current storage version
    * @return something like: /marathon/backup_0.16.0/$id
    */
-  private def fromSateToBackupId(givenId: String, storageVersion: StorageVersion) = {
+  private def fromStateToBackupId(givenId: String, storageVersion: StorageVersion) = {
     backupPath(storageVersion) + givenId.replace(config.zooKeeperStatePath, "")
   }
 
