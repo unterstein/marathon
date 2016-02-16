@@ -164,9 +164,7 @@ class Migration @Inject() (
       _ <- preparationFuture
     } yield internalMigrate()
 
-    val newStorageVersion = Await.result(migrationResult, Duration.Inf)
-    // TODO do cleanup
-    newStorageVersion
+    Await.result(migrationResult, Duration.Inf)
   }
 
   private val storageVersionName = "internal:storage:version"
