@@ -80,7 +80,7 @@ class Migration @Inject() (
         val storeOrRestore  = store.load(fromStateToBackupId(ids.toList(0), from)).map(entity => {
           if (entity.isDefined) {
             // we found a backup, therefore we need to restore this
-            // TODO clean backup
+            // TODO clean backup -> pseudo code: allIds.filter(v => v.startsWith(config.zooKeeperStatePath)).map(v => store.delete(v))
             restoreBackup(from, ids)
           } else {
             storeBackup(from, ids)
@@ -180,7 +180,7 @@ class Migration @Inject() (
 
   def isMigrationInProgress: Future[Boolean] = {
     store.load(migrationInProgressName).map {
-      case Some(variable) => true // TODO check value loaded from store, since then: present value means migration in progress
+      case Some(variable) => true // check value loaded from store, since then: present value means migration in progress
       case None           => false
     }
   }
