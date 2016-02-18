@@ -13,8 +13,7 @@ import mesosphere.util.state.{ PersistentEntity, PersistentStore, PersistentStor
 import org.scalatest.concurrent.ScalaFutures
 import org.scalatest.{ GivenWhenThen, Matchers }
 
-import scala.concurrent.duration.Duration
-import scala.concurrent.{Await, Future}
+import scala.concurrent.Future
 
 class MigrationTest extends MarathonSpec with Mockito with Matchers with GivenWhenThen with ScalaFutures {
 
