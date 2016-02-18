@@ -185,13 +185,6 @@ class Migration @Inject() (
   private val storageVersionName = "internal:storage:version"
   private val migrationInProgressName = "internal:storage:migrationInProgress"
 
-  def isMigrationInProgress: Future[Boolean] = {
-    store.load(migrationInProgressName).map {
-      case Some(variable) => true // check value loaded from store, since then: present value means migration in progress
-      case None           => false
-    }
-  }
-
   private def finishMigration: Future[Boolean] = {
     store.load(migrationInProgressName).flatMap {
       case Some(variable) => store.delete(variable.id)
