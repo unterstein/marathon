@@ -9,7 +9,7 @@ import mesosphere.marathon.state.StorageVersions._
 import mesosphere.marathon.{ BuildInfo, MarathonConf, MigrationFailedException }
 import mesosphere.util.Logging
 import scala.concurrent.ExecutionContext.Implicits.global
-import mesosphere.util.state.{PersistentEntity, PersistentStore, PersistentStoreManagement}
+import mesosphere.util.state.{ PersistentEntity, PersistentStore, PersistentStoreManagement }
 import org.slf4j.LoggerFactory
 
 import scala.collection.SortedSet
@@ -77,16 +77,18 @@ class Migration @Inject() (
     val updates = store.allIds().map(ids => {
       val idSequentialUpdates: Seq[Future[Future[PersistentEntity]]] = if (ids.length > 0) {
         // check if an backup entity is present and restore it, or store the current state as backup
-        val storeOrRestore  = store.load(fromStateToBackupId(ids.toList(0), from)).map(entity => {
+        val storeOrRestore = store.load(fromStateToBackupId(ids.toList(0), from)).map(entity => {
           if (entity.isDefined) {
             // we found a backup, therefore we need to restore this
             restoreBackup(from, ids)
-          } else {
+          }
+          else {
             storeBackup(from, ids)
           }
         })
         Await.result(storeOrRestore, Duration.Inf)
-      } else {
+      }
+      else {
         Seq.empty[Future[Future[PersistentEntity]]]
       }
 
@@ -131,20 +133,20 @@ class Migration @Inject() (
   }
 
   /**
-   * @param givenId the id in storage, e.g. /marathon/state/$id
-   * @param storageVersion the current storage version
-   * @return something like: /marathon/backup_0.16.0/$id
-   */
+    * @param givenId the id in storage, e.g. /marathon/state/$id
+    * @param storageVersion the current storage version
+    * @return something like: /marathon/backup_0.16.0/$id
+    */
   private def fromStateToBackupId(givenId: String, storageVersion: StorageVersion) = {
     backupPath(storageVersion) + givenId.replace(config.zooKeeperStatePath, "")
   }
 
   /**
-   *
-   * @param givenId something like: /marathon/backup_0.16.0/$someId
-   * @param storageVersion the current storage version
-   * @return something like /marathon/state/$someId
-   */
+    *
+    * @param givenId something like: /marathon/backup_0.16.0/$someId
+    * @param storageVersion the current storage version
+    * @return something like /marathon/state/$someId
+    */
   private def fromBackupToStateId(givenId: String, storageVersion: StorageVersion) = {
     config.zooKeeperStatePath + givenId.replace(backupPath(storageVersion), "")
   }
@@ -188,7 +190,7 @@ class Migration @Inject() (
   private def finishMigration: Future[Boolean] = {
     store.load(migrationInProgressName).flatMap {
       case Some(variable) => store.delete(variable.id)
-      case None           =>
+      case None =>
         log.warn("Remove of isMigrationInProgress not possible, flag already removed!")
         Future.successful(false)
     }
@@ -196,9 +198,9 @@ class Migration @Inject() (
 
   private def startMigration: Future[PersistentEntity] = {
     store.load(migrationInProgressName).flatMap {
-      case Some(variable: PersistentEntity) =>
-        throw new MigrationFailedException("Currently there is a migration in progress, we can not start a new one. Please restore the backup.")
-      case None           => store.create(migrationInProgressName, IndexedSeq.empty)
+      case Some(variable) =>
+        throw new MigrationFailedException(s"Currently there is a migration in progress, we can not start a new one. Please remove '$migrationInProgressName' property form zookeeper and restart migration.")
+      case None => store.create(migrationInProgressName, IndexedSeq.empty)
     }
   }
 

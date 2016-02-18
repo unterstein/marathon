@@ -199,7 +199,7 @@ class MigrationTest extends MarathonSpec with Mockito with Matchers with GivenWh
     }
 
     Then("Migration exits with a readable error message")
-    ex.getMessage should equal ("Currently there is a migration in progress, we can not start a new one. Please restore the backup.")
+    ex.getMessage should startWith ("Currently there is a migration in progress, we can not start a new one.")
   }
 
   private def addBackupToFixture(f: Fixture) = {
