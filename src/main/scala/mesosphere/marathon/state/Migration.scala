@@ -81,14 +81,12 @@ class Migration @Inject() (
           if (entity.isDefined) {
             // we found a backup, therefore we need to restore this
             restoreBackup(from, ids)
-          }
-          else {
+          } else {
             storeBackup(from, ids)
           }
         })
         Await.result(storeOrRestore, Duration.Inf)
-      }
-      else {
+      } else {
         Seq.empty[Future[Future[PersistentEntity]]]
       }
 
