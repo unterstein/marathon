@@ -205,8 +205,8 @@ class MigrationTest extends MarathonSpec with Mockito with Matchers with GivenWh
 
   private def addBackupToFixture(f: Fixture) = {
     f.store.load("internal:storage:migrationInProgress") returns (
-      Future.successful(None),
-      Future.successful(Some(InMemoryEntity(id = "internal:storage:migrationInProgress", version = 0, bytes = IndexedSeq.empty)))
+      Future.successful(None), // first call returns none
+      Future.successful(Some(InMemoryEntity(id = "internal:storage:migrationInProgress", version = 0, bytes = IndexedSeq.empty))) // later calls returns mocked entity
     )
     f.store.delete(any) returns Future.successful(true)
   }
