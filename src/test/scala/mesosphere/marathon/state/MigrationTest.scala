@@ -45,6 +45,7 @@ class MigrationTest extends MarathonSpec with Mockito with Matchers with GivenWh
     f.appRepo.apps() returns Future.successful(Seq.empty)
     f.appRepo.allPathIds() returns Future.successful(Seq.empty)
     f.groupRepo.group("root") returns Future.successful(None)
+    addBackupToFixture(f)
 
     f.migration.migrate()
     verify(f.store, atLeastOnce).initialize()
@@ -64,6 +65,7 @@ class MigrationTest extends MarathonSpec with Mockito with Matchers with GivenWh
     f.appRepo.apps() returns Future.successful(Seq.empty)
     f.appRepo.allPathIds() returns Future.successful(Seq.empty)
     f.groupRepo.group("root") returns Future.successful(None)
+    addBackupToFixture(f)
 
     val result = f.migration.applyMigrationSteps(StorageVersions(0, 8, 0)).futureValue
     result should not be 'empty
@@ -101,9 +103,7 @@ class MigrationTest extends MarathonSpec with Mockito with Matchers with GivenWh
     val unsupportedVersion = StorageVersions(0, 2, 0)
     f.store.load("internal:storage:version") returns Future.successful(Some(InMemoryEntity(
       id = "internal:storage:version", version = 0, bytes = unsupportedVersion.toByteArray)))
-
     addBackupToFixture(f)
-
     f.store.create(any, any) returns Future.successful(mock[PersistentEntity])
 
     When("A migration is approached for that version")
@@ -126,9 +126,7 @@ class MigrationTest extends MarathonSpec with Mockito with Matchers with GivenWh
     f.groupRepo.store(any, any) returns Future.successful(Group.empty)
     f.store.load("internal:storage:version") returns Future.successful(Some(InMemoryEntity(
       id = "internal:storage:version", version = 0, bytes = StorageVersions(0, 16, 0).toByteArray)))
-
     addBackupToFixture(f)
-
     f.store.create(any, any) returns Future.successful(mock[PersistentEntity])
     f.store.update(any) returns Future.successful(mock[PersistentEntity])
     f.store.allIds() returns Future.successful(Seq(stateId))
@@ -152,6 +150,7 @@ class MigrationTest extends MarathonSpec with Mockito with Matchers with GivenWh
     M.when(f.store.load("internal:storage:migrationInProgress"))
       .thenReturn(Future.successful(None))
       .thenReturn(Future.successful(Some(InMemoryEntity(id = "internal:storage:migrationInProgress", version = 0, bytes = IndexedSeq.empty))))
+    f.store.delete(any) returns Future.successful(true)
   }
 
   class Fixture {
