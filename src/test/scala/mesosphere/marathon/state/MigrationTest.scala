@@ -148,7 +148,6 @@ class MigrationTest extends MarathonSpec with Mockito with Matchers with GivenWh
   test("migration should fail if migration is in progress") {
     val f = new Fixture
 
-
     f.groupRepo.rootGroup() returns Future.successful(None)
     f.groupRepo.store(any, any) returns Future.successful(Group.empty)
     f.store.load("internal:storage:version") returns Future.successful(Some(InMemoryEntity(
