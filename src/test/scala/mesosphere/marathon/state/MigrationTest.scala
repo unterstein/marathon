@@ -15,6 +15,7 @@ import org.scalatest.{ GivenWhenThen, Matchers }
 
 import scala.concurrent.duration.Duration
 import scala.concurrent.{Await, Future}
+import org.mockito.{ Mockito => M }
 
 class MigrationTest extends MarathonSpec with Mockito with Matchers with GivenWhenThen with ScalaFutures {
 
@@ -100,8 +101,9 @@ class MigrationTest extends MarathonSpec with Mockito with Matchers with GivenWh
     val unsupportedVersion = StorageVersions(0, 2, 0)
     f.store.load("internal:storage:version") returns Future.successful(Some(InMemoryEntity(
       id = "internal:storage:version", version = 0, bytes = unsupportedVersion.toByteArray)))
-    f.store.load("internal:storage:migrationInProgress") returns Future.successful(Some(InMemoryEntity(
-      id = "mock.internal:storage:migrationInProgress", version = 0, bytes = IndexedSeq.empty)))
+
+    addBackupToFixture(f)
+
     f.store.create(any, any) returns Future.successful(mock[PersistentEntity])
 
     When("A migration is approached for that version")
@@ -124,8 +126,9 @@ class MigrationTest extends MarathonSpec with Mockito with Matchers with GivenWh
     f.groupRepo.store(any, any) returns Future.successful(Group.empty)
     f.store.load("internal:storage:version") returns Future.successful(Some(InMemoryEntity(
       id = "internal:storage:version", version = 0, bytes = StorageVersions(0, 16, 0).toByteArray)))
-    f.store.load("internal:storage:migrationInProgress") returns Future.successful(Some(InMemoryEntity(
-      id = "mock.internal:storage:migrationInProgress", version = 0, bytes = IndexedSeq.empty)))
+
+    addBackupToFixture(f)
+
     f.store.create(any, any) returns Future.successful(mock[PersistentEntity])
     f.store.update(any) returns Future.successful(mock[PersistentEntity])
     f.store.allIds() returns Future.successful(Seq(stateId))
@@ -143,6 +146,12 @@ class MigrationTest extends MarathonSpec with Mockito with Matchers with GivenWh
     verify(f.store, atLeastOnce).create(any, any)
     verify(f.store, times(1)).create(backupId, mockBytes)
     verify(f.store, atLeastOnce).create(any, any)
+  }
+
+  private def addBackupToFixture(f: Fixture) {
+    M.when(f.store.load("internal:storage:migrationInProgress"))
+      .thenReturn(Future.successful(None))
+      .thenReturn(Future.successful(Some(InMemoryEntity(id = "internal:storage:migrationInProgress", version = 0, bytes = IndexedSeq.empty))))
   }
 
   class Fixture {

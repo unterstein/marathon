@@ -197,13 +197,8 @@ class Migration @Inject() (
   private def startMigration: Future[PersistentEntity] = {
     store.load(migrationInProgressName).flatMap {
       case Some(variable: PersistentEntity) =>
-        // check if loaded id is equals to actual migrationInProgressName -> needed for testing environment
-        if (variable.id == migrationInProgressName) {
-          // TODO restore of backup is implemented, the reset of this flag must be handled through application startup and issue 3004
-          throw new MigrationFailedException("Currently there is a migration in progress, we can not start a new one. Please restore the backup.")
-        } else {
-          store.create(migrationInProgressName, IndexedSeq.empty)
-        }
+        // TODO restore of backup is implemented, the reset of this flag must be handled through application startup and issue 3004
+        throw new MigrationFailedException("Currently there is a migration in progress, we can not start a new one. Please restore the backup.")
       case None           => store.create(migrationInProgressName, IndexedSeq.empty)
     }
   }
