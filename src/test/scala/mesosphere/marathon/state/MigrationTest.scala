@@ -145,6 +145,33 @@ class MigrationTest extends MarathonSpec with Mockito with Matchers with GivenWh
     verify(f.store, atLeastOnce).create(any, any)
   }
 
+  test("migration should fail if migration is in progress") {
+    val f = new Fixture
+
+
+    f.groupRepo.rootGroup() returns Future.successful(None)
+    f.groupRepo.store(any, any) returns Future.successful(Group.empty)
+    f.store.load("internal:storage:version") returns Future.successful(Some(InMemoryEntity(
+      id = "internal:storage:version", version = 0, bytes = StorageVersions(0, 16, 0).toByteArray)))
+    f.store.create(any, any) returns Future.successful(mock[PersistentEntity])
+    f.store.update(any) returns Future.successful(mock[PersistentEntity])
+    f.store.initialize() returns Future.successful(())
+    f.store.load(any) returns Future.successful(None)
+    f.appRepo.apps() returns Future.successful(Seq.empty)
+    f.appRepo.allPathIds() returns Future.successful(Seq.empty)
+    f.groupRepo.group("root") returns Future.successful(None)
+    f.store.load("internal:storage:migrationInProgress") returns Future.successful(Some(InMemoryEntity(
+      id = "internal:storage:migrationInProgress", version = 0, bytes = IndexedSeq.empty)))
+
+    When("A migration is approached during migration flag is present")
+    val ex = intercept[RuntimeException] {
+      f.migration.migrate()
+    }
+
+    Then("Migration exits with a readable error message")
+    ex.getMessage should equal ("Currently there is a migration in progress, we can not start a new one. Please restore the backup.")
+  }
+
   private def addBackupToFixture(f: Fixture) = {
     f.store.load("internal:storage:migrationInProgress") returns (
       Future.successful(None),
