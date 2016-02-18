@@ -146,6 +146,37 @@ class MigrationTest extends MarathonSpec with Mockito with Matchers with GivenWh
     verify(f.store, once).delete("internal:storage:migrationInProgress")
   }
 
+  test("migration should restore backup, if founded") {
+    val f = new Fixture
+
+    val stateId = s"${f.config.zooKeeperStatePath}/first"
+    val backupId = s"${f.config.zooKeeperBackupPath}_0.16.0/first"
+    val mockBytes = "myValue".getBytes
+
+    f.groupRepo.rootGroup() returns Future.successful(None)
+    f.groupRepo.store(any, any) returns Future.successful(Group.empty)
+    f.store.load("internal:storage:version") returns Future.successful(Some(InMemoryEntity(
+      id = "internal:storage:version", version = 0, bytes = StorageVersions(0, 16, 0).toByteArray)))
+    f.store.create(any, any) returns Future.successful(mock[PersistentEntity])
+    f.store.update(any) returns Future.successful(mock[PersistentEntity])
+    f.store.allIds() returns Future.successful(Seq(stateId, backupId))
+    f.store.initialize() returns Future.successful(())
+    f.store.load(any) returns Future.successful(None)
+    f.store.load(stateId) returns Future.successful(Some(InMemoryEntity(
+      id = stateId, version = 0, bytes = mockBytes)))
+    f.store.load(backupId) returns Future.successful(Some(InMemoryEntity(
+      id = stateId, version = 0, bytes = mockBytes)))
+    f.appRepo.apps() returns Future.successful(Seq.empty)
+    f.appRepo.allPathIds() returns Future.successful(Seq.empty)
+    f.groupRepo.group("root") returns Future.successful(None)
+    addBackupToFixture(f)
+
+    f.migration.migrate()
+
+    verify(f.store, atLeastOnce).create(any, any)
+    verify(f.store, once).delete(stateId) // restoring is indicated through the deletion of the old state property
+  }
+
   test("migration should fail if migration is in progress") {
     val f = new Fixture
 

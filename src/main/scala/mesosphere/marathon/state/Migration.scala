@@ -80,7 +80,6 @@ class Migration @Inject() (
         val storeOrRestore  = store.load(fromStateToBackupId(ids.toList(0), from)).map(entity => {
           if (entity.isDefined) {
             // we found a backup, therefore we need to restore this
-            // TODO clean backup -> pseudo code: allIds.filter(v => v.startsWith(config.zooKeeperStatePath)).map(v => store.delete(v))
             restoreBackup(from, ids)
           } else {
             storeBackup(from, ids)
@@ -113,14 +112,22 @@ class Migration @Inject() (
   }
 
   def restoreBackup(from: StorageVersion, ids: Seq[Migration.this.store.ID]): Seq[Future[Future[PersistentEntity]]] = {
-    ids.filter(id => id.startsWith(config.zooKeeperBackupPath)).map(id => {
-      store.load(id).map {
-        case Some(variable) => store.create(fromBackupToStateId(id, from), variable.bytes)
-        case None =>
-          log.warn(s"Restore backup missed persistent entity for id $id")
-          store.create(fromBackupToStateId(id, from), IndexedSeq.empty)
+    val deletedIds: Seq[Future[Boolean]] = ids.filter(id => id.startsWith(config.zooKeeperStatePath)).map(id => store.delete(id))
+    // await all deletions before start restoring
+    deletedIds.map(id => Await.result(id, Duration.Inf))
+    for {
+      backup <- {
+        // then copy all other properties
+        ids.filter(id => id.startsWith(config.zooKeeperBackupPath)).map(id => {
+          store.load(id).map {
+            case Some(variable) => store.create(fromBackupToStateId(id, from), variable.bytes)
+            case None =>
+              log.warn(s"Restore backup missed persistent entity for id $id")
+              store.create(fromBackupToStateId(id, from), IndexedSeq.empty)
+          }
+        })
       }
-    })
+    } yield backup
   }
 
   /**
@@ -139,7 +146,7 @@ class Migration @Inject() (
    * @return something like /marathon/state/$someId
    */
   private def fromBackupToStateId(givenId: String, storageVersion: StorageVersion) = {
-    config.zooKeeperStatePath + "/" + givenId.replace(backupPath(storageVersion), "")
+    config.zooKeeperStatePath + givenId.replace(backupPath(storageVersion), "")
   }
 
   private def backupPath(storageVersion: StorageVersion) = config.zooKeeperBackupPath + "_" + storageVersion.getMajor + "." + storageVersion.getMinor + "." + storageVersion.getPatch
