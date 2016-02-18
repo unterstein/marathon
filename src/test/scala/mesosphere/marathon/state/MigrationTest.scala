@@ -125,7 +125,6 @@ class MigrationTest extends MarathonSpec with Mockito with Matchers with GivenWh
     f.groupRepo.store(any, any) returns Future.successful(Group.empty)
     f.store.load("internal:storage:version") returns Future.successful(Some(InMemoryEntity(
       id = "internal:storage:version", version = 0, bytes = StorageVersions(0, 16, 0).toByteArray)))
-    addBackupToFixture(f)
     f.store.create(any, any) returns Future.successful(mock[PersistentEntity])
     f.store.update(any) returns Future.successful(mock[PersistentEntity])
     f.store.allIds() returns Future.successful(Seq(stateId))
@@ -136,6 +135,7 @@ class MigrationTest extends MarathonSpec with Mockito with Matchers with GivenWh
     f.appRepo.apps() returns Future.successful(Seq.empty)
     f.appRepo.allPathIds() returns Future.successful(Seq.empty)
     f.groupRepo.group("root") returns Future.successful(None)
+    addBackupToFixture(f)
 
     f.migration.migrate()
 
@@ -145,7 +145,7 @@ class MigrationTest extends MarathonSpec with Mockito with Matchers with GivenWh
     verify(f.store, atLeastOnce).create(any, any)
   }
 
-  private def addBackupToFixture(f: Fixture) {
+  private def addBackupToFixture(f: Fixture) = {
     f.store.load("internal:storage:migrationInProgress") returns (
       Future.successful(None),
       Future.successful(Some(InMemoryEntity(id = "internal:storage:migrationInProgress", version = 0, bytes = IndexedSeq.empty)))
